@@ -327,18 +327,20 @@ else:
 
         with tab4:
             st.header("Bidder Analysis")
-            st.write("*Top 10 active bidders with threat assessment and win rate analysis*")
+            st.write("*Threat assessment and win rate analysis for active bidders*")
+            st.info("💡 Note: Bidder extraction works best locally. Cloud version may show limited bidders due to JavaScript rendering constraints.")
 
             try:
-                # Extract top 10 bidders from auction using Playwright
+                # Extract top 10 bidders from auction
                 st.caption("Loading bidders from auction...")
                 bid_scraper = BidHistoryScraper()
 
                 try:
-                    with st.spinner("🔍 Analyzing bidders (this may take 15-30 seconds)..."):
+                    with st.spinner("🔍 Analyzing bidders (this may take 10-30 seconds)..."):
                         top_bidders = bid_scraper.get_top_bidders(auction_url, limit=10)
                 except Exception as scraper_error:
                     st.error(f"Bidder extraction failed: {str(scraper_error)}")
+                    st.write("Try downloading the local version: https://github.com/CatDaddy575/jay-auction-analyzer")
                     top_bidders = []
                 finally:
                     try:
