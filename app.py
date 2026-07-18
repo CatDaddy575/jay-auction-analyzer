@@ -332,6 +332,8 @@ else:
                 result = scraper.parse_auction_page(html, url=auction_url)
                 bidding_history = result['bidding_history']
 
+                st.caption(f"ℹ️ Extracted {len(bidding_history)} bids from auction page")
+
                 if bidding_history:
                     # Analyze bidders
                     analyzer = BidderAnalyzer()
@@ -388,10 +390,21 @@ else:
                     st.info(analysis['recommendation'])
 
                 else:
-                    st.warning("No bidding history found on this page. Auction may not have started yet.")
+                    st.warning("""
+                    ⏳ **No bidding history found**
+
+                    This could mean:
+                    - The auction hasn't started yet (no bids placed)
+                    - Bid history is dynamically loaded and requires additional processing
+                    - The page structure is different than expected
+
+                    **Try:** Test with an active auction that has multiple bids already placed.
+                    """)
 
             except Exception as e:
-                st.error(f"Error analyzing bidders: {e}")
+                st.error(f"❌ Error analyzing bidders: {str(e)}")
+                with st.expander("Debug info"):
+                    st.write("Check that the auction page fully loaded and has bidding activity.")
 
 # Footer
 st.markdown("---")
