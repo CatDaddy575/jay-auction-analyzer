@@ -11,26 +11,12 @@ import re
 import json
 import pandas as pd
 import sys
-import subprocess
 sys.path.insert(0, '.')
 from src.scraper.auctions import AuctionScraper
 from src.scraper.bid_history import BidHistoryScraper
 from src.market.bidder_analyzer import BidderAnalyzer
 from src.market.fees import FeeCalculator
 from src.bidder.current_bidders import CurrentBiddersAnalyzer
-
-# Initialize Playwright on first run (for cloud deployment)
-@st.cache_resource
-def init_playwright():
-    try:
-        # Try to install playwright browsers if not already installed
-        subprocess.run(['playwright', 'install', 'chromium'],
-                      capture_output=True, timeout=60)
-    except:
-        pass  # If it fails, fallback to static HTML will be used
-    return True
-
-_ = init_playwright()
 
 # Page config
 st.set_page_config(
