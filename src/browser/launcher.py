@@ -5,7 +5,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 import time
 
-from src.config.credentials import get_credentials, BA_BASE_URL
+from src.config.credentials import get_credentials, BA_BASE_URL, USER_AGENT
 
 class BrowserManager:
     def __init__(self):
