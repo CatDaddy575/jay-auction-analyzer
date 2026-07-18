@@ -7,17 +7,29 @@ class FeeCalculator:
     """Calculate BringATrailer buyer's fees"""
 
     # BringATrailer fee structure (verified from https://bringatrailer.com/help/buying/)
-    # Category-based fees (5% or 10% depending on auction category):
-    # - Minimum fee: $250
-    # - 10% fee cap: $4,000
-    # - 5% fee cap: $7,500
-    # Note: We default to 5% (most common); user can override for 10% auctions
+    # Default: 5% fee on winning bid
+    # Exception categories (10% fee): Motorcycles, Minibikes & Scooters, Parts and Automobilia,
+    #                                 Wheels, ATVs, Go-Karts, Tractors
+    #
+    # Fee details:
+    # - 5% auctions: $250 minimum, $7,500 maximum
+    # - 10% auctions: $250 minimum, $4,000 maximum
 
     FEE_RATE_5_PERCENT = 0.05
     FEE_RATE_10_PERCENT = 0.10
     MIN_FEE = 250
     CAP_5_PERCENT = 7_500
     CAP_10_PERCENT = 4_000
+
+    CATEGORIES_10_PERCENT = [
+        'Motorcycles',
+        'Minibikes & Scooters',
+        'Parts and Automobilia',
+        'Wheels',
+        'ATVs',
+        'Go-Karts',
+        'Tractors'
+    ]
 
     @staticmethod
     def calculate_total_cost(winning_bid: int, fee_rate: float = 0.05) -> dict:

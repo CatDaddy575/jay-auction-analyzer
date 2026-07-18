@@ -216,10 +216,14 @@ else:
             st.header("Max Bid Recommendation")
 
             st.subheader("Auction Fee Category")
+            st.write("**Most car auctions: 5% fee (default)**")
+            st.write("*10% fee applies only to: Motorcycles, Minibikes, Parts, Wheels, ATVs, Go-Karts, Tractors*")
+
             fee_category = st.radio(
-                "Select your auction's fee category (from BringATrailer help page):",
+                "Select your auction's fee category:",
                 options=["5% fee (cap: $7,500)", "10% fee (cap: $4,000)"],
-                horizontal=True
+                horizontal=True,
+                index=0
             )
             fee_rate = 0.05 if "5%" in fee_category else 0.10
 
