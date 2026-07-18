@@ -1,0 +1,39 @@
+# Environment & Credentials
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build & Dist
+dist/
+build/
+.next/
+
+# Cache
+.cache/
+temp/
+tmp/
+
+# Passwords & Vault
+passwords/
+vault/
