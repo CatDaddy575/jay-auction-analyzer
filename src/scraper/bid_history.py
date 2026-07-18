@@ -58,49 +58,114 @@ class BidHistoryScraper:
                 return []
 
     def _parse_bid_history(self, html, auction_url):
-        """Parse bid history from page HTML"""
+        """Parse bid history from page HTML - extract only from comments/bidding activity"""
         soup = BeautifulSoup(html, 'html.parser')
         bidders_list = []
 
-        # Extract ALL member links from page (includes bidders in comments, activity, etc.)
-        all_member_links = soup.find_all('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
+        # First, find the seller so we can exclude them
+        seller_name = self._find_seller(soup)
 
-        if not all_member_links:
-            return []
+        # Extract bidders from comments section (where bid activity happens)
+        comments = soup.find_all('div', class_='comment')
 
-        # Extract unique bidder names, filtering out duplicates and sellers
-        seen_bidders = {}
-        for link in all_member_links:
-            bidder_text = link.get_text(strip=True)
+        if comments:
+            # Extract unique bidder names from comments
+            seen_bidders = {}
+            for comment in comments:
+                # Find member link in this comment
+                member_link = comment.find('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
+                if member_link:
+                    bidder_text = member_link.get_text(strip=True)
+                    normalized_name = bidder_text.lstrip('@')
 
-            if not bidder_text or len(bidder_text) < 2 or len(bidder_text) > 50:
-                continue
+                    # Remove "(The Seller)" or "(seller)" marker if present
+                    if '(the seller)' in normalized_name.lower():
+                        normalized_name = normalized_name.split('(')[0].strip()
+                    if '(seller)' in normalized_name.lower():
+                        normalized_name = normalized_name.split('(')[0].strip()
 
-            # Normalize name (remove @ prefix if present)
-            normalized_name = bidder_text.lstrip('@')
+                    # Skip invalid names
+                    if not normalized_name or len(normalized_name) < 2 or len(normalized_name) > 50:
+                        continue
 
-            # Skip if already seen (under normalized name)
-            if normalized_name in seen_bidders:
-                continue
+                    # Skip if already seen
+                    if normalized_name in seen_bidders:
+                        continue
 
-            # Skip if seller (marked with "(The Seller)" text)
-            if '(The Seller)' in bidder_text or '(the seller)' in bidder_text.lower():
-                continue
+                    # Skip seller
+                    if seller_name and normalized_name.lower() == seller_name.lower():
+                        continue
 
-            # Skip common non-bidder terms
-            if normalized_name.lower() in ['bringatrailer', 'seller', 'reserve', 'admin']:
-                continue
+                    # Skip common non-bidder terms
+                    if normalized_name.lower() in ['bringatrailer', 'seller', 'reserve', 'admin']:
+                        continue
 
-            # Add to bidders list (keep first occurrence)
-            seen_bidders[normalized_name] = True
-            bidders_list.append({
-                'bidder_name': normalized_name,
-                'bid_amount': None,
-                'timestamp': None,
-                'result': 'active'
-            })
+                    seen_bidders[normalized_name] = True
+                    bidders_list.append({
+                        'bidder_name': normalized_name,
+                        'bid_amount': None,
+                        'timestamp': None,
+                        'result': 'active'
+                    })
+
+            return bidders_list
+
+        # Fallback: if no comments, extract from bid information section only
+        bid_info = soup.find('div', class_='bid-information')
+        if bid_info:
+            member_links = bid_info.find_all('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
+            seen_bidders = {}
+
+            for link in member_links:
+                bidder_text = link.get_text(strip=True)
+                normalized_name = bidder_text.lstrip('@')
+
+                if not normalized_name or len(normalized_name) < 2 or len(normalized_name) > 50:
+                    continue
+
+                if normalized_name in seen_bidders:
+                    continue
+
+                if seller_name and normalized_name.lower() == seller_name.lower():
+                    continue
+
+                if normalized_name.lower() in ['bringatrailer', 'seller', 'reserve', 'admin']:
+                    continue
+
+                seen_bidders[normalized_name] = True
+                bidders_list.append({
+                    'bidder_name': normalized_name,
+                    'bid_amount': None,
+                    'timestamp': None,
+                    'result': 'active'
+                })
 
         return bidders_list
+
+    def _find_seller(self, soup):
+        """Find the seller's name from the auction page"""
+        try:
+            # Look for seller name in page title or metadata
+            # Usually appears as "Listing by [seller name]" or in post meta
+            post_meta = soup.find('div', class_='post-meta')
+            if post_meta:
+                text = post_meta.get_text()
+                if 'by' in text.lower():
+                    # Extract name after "by"
+                    parts = text.split('by')
+                    if len(parts) > 1:
+                        return parts[1].strip()
+
+            # Alternative: look for member link with "(seller)" or "(the seller)" indicator
+            all_links = soup.find_all('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
+            for link in all_links:
+                link_text = link.get_text(strip=True)
+                if '(the seller)' in link_text.lower() or '(seller)' in link_text.lower():
+                    return link_text.split('(')[0].strip()
+
+            return None
+        except:
+            return None
 
     def get_top_bidders(self, auction_url, limit=10):
         """
