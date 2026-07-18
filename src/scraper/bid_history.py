@@ -71,33 +71,22 @@ class BidHistoryScraper:
                 return []
 
     def _parse_bid_history(self, html, auction_url):
-        """Parse bid history from page HTML - extract comments + prioritize current high bidder"""
+        """Parse bid history from page HTML - rank by highest bid amount on THIS auction"""
         soup = BeautifulSoup(html, 'html.parser')
-        bidders_list = []
+        bidders_dict = {}  # Track highest bid per bidder
 
         # First, find the seller so we can exclude them
         seller_name = self._find_seller(soup)
 
-        # PRIORITY 1: Extract current high bidder from bid-information section
-        current_high_bidder = self._find_current_high_bidder(soup)
+        # PRIORITY 1: Extract current high bid amount from bid-information section
+        current_high_bidder, current_high_amount = self._find_current_high_bid(soup)
         if current_high_bidder and current_high_bidder.lower() != seller_name.lower() if seller_name else True:
-            bidders_list.append({
-                'bidder_name': current_high_bidder,
-                'bid_amount': None,
-                'timestamp': None,
-                'result': 'active'
-            })
+            bidders_dict[current_high_bidder] = current_high_amount
 
         # Extract bidders from comments section (where bid activity happens)
         comments = soup.find_all('div', class_='comment')
 
         if comments:
-            # Extract unique bidder names from comments
-            seen_bidders = {}
-            # Track that we already have the current high bidder
-            if current_high_bidder:
-                seen_bidders[current_high_bidder] = True
-
             for comment in comments:
                 # Find member link in this comment
                 member_link = comment.find('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
@@ -115,10 +104,6 @@ class BidHistoryScraper:
                     if not normalized_name or len(normalized_name) < 2 or len(normalized_name) > 50:
                         continue
 
-                    # Skip if already seen
-                    if normalized_name in seen_bidders:
-                        continue
-
                     # Skip seller
                     if seller_name and normalized_name.lower() == seller_name.lower():
                         continue
@@ -127,54 +112,65 @@ class BidHistoryScraper:
                     if normalized_name.lower() in ['bringatrailer', 'seller', 'reserve', 'admin']:
                         continue
 
-                    seen_bidders[normalized_name] = True
-                    bidders_list.append({
-                        'bidder_name': normalized_name,
-                        'bid_amount': None,
-                        'timestamp': None,
-                        'result': 'active'
-                    })
+                    # Extract bid amount from comment text if available
+                    bid_amount = self._extract_bid_amount(comment)
 
-            return bidders_list
+                    # Track highest bid for this bidder
+                    if normalized_name not in bidders_dict or bid_amount > (bidders_dict[normalized_name] or 0):
+                        bidders_dict[normalized_name] = bid_amount
 
-        # Fallback: if no comments, extract from bid information section only
-        bid_info = soup.find('div', class_='bid-information')
-        if bid_info:
-            member_links = bid_info.find_all('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
-            seen_bidders = {}
-
-            for link in member_links:
-                bidder_text = link.get_text(strip=True)
-                normalized_name = bidder_text.lstrip('@')
-
-                if not normalized_name or len(normalized_name) < 2 or len(normalized_name) > 50:
-                    continue
-
-                if normalized_name in seen_bidders:
-                    continue
-
-                if seller_name and normalized_name.lower() == seller_name.lower():
-                    continue
-
-                if normalized_name.lower() in ['bringatrailer', 'seller', 'reserve', 'admin']:
-                    continue
-
-                seen_bidders[normalized_name] = True
-                bidders_list.append({
-                    'bidder_name': normalized_name,
-                    'bid_amount': None,
-                    'timestamp': None,
-                    'result': 'active'
-                })
+        # Convert to list and sort by bid amount (highest first)
+        bidders_list = []
+        for name, amount in sorted(bidders_dict.items(), key=lambda x: x[1] if x[1] else 0, reverse=True):
+            bidders_list.append({
+                'bidder_name': name,
+                'bid_amount': amount,
+                'timestamp': None,
+                'result': 'active'
+            })
 
         return bidders_list
 
-    def _find_current_high_bidder(self, soup):
-        """Extract the current high bidder from bid-information section"""
+        # Fallback: if no comments, extract from bid information section only
+        if not bidders_dict:
+            bid_info = soup.find('div', class_='bid-information')
+            if bid_info:
+                member_links = bid_info.find_all('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
+
+                for link in member_links:
+                    bidder_text = link.get_text(strip=True)
+                    normalized_name = bidder_text.lstrip('@')
+
+                    if not normalized_name or len(normalized_name) < 2 or len(normalized_name) > 50:
+                        continue
+
+                    if seller_name and normalized_name.lower() == seller_name.lower():
+                        continue
+
+                    if normalized_name.lower() in ['bringatrailer', 'seller', 'reserve', 'admin']:
+                        continue
+
+                    if normalized_name not in bidders_dict:
+                        bidders_dict[normalized_name] = 0
+
+        # Convert to list and sort by bid amount (highest first)
+        bidders_list = []
+        for name, amount in sorted(bidders_dict.items(), key=lambda x: x[1] if x[1] else 0, reverse=True):
+            bidders_list.append({
+                'bidder_name': name,
+                'bid_amount': amount,
+                'timestamp': None,
+                'result': 'active'
+            })
+
+        return bidders_list
+
+    def _find_current_high_bid(self, soup):
+        """Extract the current high bidder and bid amount from bid-information section"""
         try:
             bid_info = soup.find('div', class_='bid-information')
             if not bid_info:
-                return None
+                return None, None
 
             # Look for the bidder link in bid information
             member_link = bid_info.find('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
@@ -185,11 +181,33 @@ class BidHistoryScraper:
                     bidder_name = bidder_name.split('(')[0].strip()
                 if '(seller)' in bidder_name.lower():
                     bidder_name = bidder_name.split('(')[0].strip()
-                return bidder_name if bidder_name else None
 
-            return None
+                # Extract bid amount from bid info section
+                bid_text = bid_info.get_text()
+                bid_amount = self._extract_bid_amount_from_text(bid_text)
+
+                return bidder_name if bidder_name else None, bid_amount
+
+            return None, None
         except:
-            return None
+            return None, None
+
+    def _extract_bid_amount(self, element):
+        """Extract bid amount from a comment or bid element"""
+        return self._extract_bid_amount_from_text(element.get_text())
+
+    def _extract_bid_amount_from_text(self, text):
+        """Parse bid amount from text like '$50,000' or 'bid $50,000'"""
+        try:
+            # Look for $ followed by numbers
+            import re
+            match = re.search(r'\$[\d,]+(?:\.\d{2})?', text)
+            if match:
+                bid_str = match.group(0).replace('$', '').replace(',', '')
+                return float(bid_str)
+        except:
+            pass
+        return 0
 
     def _find_seller(self, soup):
         """Find the seller's name from the auction page"""
