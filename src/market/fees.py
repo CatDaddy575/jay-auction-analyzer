@@ -7,15 +7,20 @@ class FeeCalculator:
     """Calculate BringATrailer buyer's fees"""
 
     # BringATrailer fee structure (as of 2026)
-    # Standard buyer's fee: 8%
-    # (Verify this at: https://bringatrailer.com/help/buying/)
+    # Tiered buyer's fee:
+    # - 8% on bids up to $100,000
+    # - 5% on bids above $100,000 (capped at $8,000 max fee on first $100k)
+    # This means max total fee is approximately $8,000 + 5% of amount over $100k
+    # (Verify at: https://bringatrailer.com/help/buying/)
 
-    BUYER_FEE_PERCENT = 0.08  # 8%
+    TIER_1_LIMIT = 100_000     # Bids up to $100k
+    TIER_1_RATE = 0.08         # 8% fee
+    TIER_2_RATE = 0.05         # 5% fee above $100k
 
     @staticmethod
     def calculate_total_cost(winning_bid: int) -> dict:
         """
-        Calculate total cost including buyer's fee
+        Calculate total cost including tiered buyer's fee
 
         Args:
             winning_bid: The hammer price (winning bid amount)
@@ -23,21 +28,30 @@ class FeeCalculator:
         Returns:
             Dict with breakdown of costs
         """
-        buyer_fee = int(winning_bid * FeeCalculator.BUYER_FEE_PERCENT)
+        if winning_bid <= FeeCalculator.TIER_1_LIMIT:
+            buyer_fee = int(winning_bid * FeeCalculator.TIER_1_RATE)
+            fee_rate = FeeCalculator.TIER_1_RATE * 100
+        else:
+            tier_1_fee = int(FeeCalculator.TIER_1_LIMIT * FeeCalculator.TIER_1_RATE)
+            tier_2_amount = winning_bid - FeeCalculator.TIER_1_LIMIT
+            tier_2_fee = int(tier_2_amount * FeeCalculator.TIER_2_RATE)
+            buyer_fee = tier_1_fee + tier_2_fee
+            fee_rate = (buyer_fee / winning_bid * 100) if winning_bid > 0 else 0
+
         total_cost = winning_bid + buyer_fee
 
         return {
             'winning_bid': winning_bid,
             'buyer_fee': buyer_fee,
-            'buyer_fee_percent': FeeCalculator.BUYER_FEE_PERCENT * 100,
+            'buyer_fee_percent': fee_rate,
             'total_cost': total_cost,
-            'fee_per_dollar': round(FeeCalculator.BUYER_FEE_PERCENT * 100, 2)
+            'fee_per_dollar': round(fee_rate, 2)
         }
 
     @staticmethod
     def calculate_max_bid(target_price: int) -> dict:
         """
-        Calculate max bid to stay within target price (including fees)
+        Calculate max bid to stay within target price (including tiered fees)
 
         If you want to pay max $35,000 total, what's your max bid?
 
@@ -47,12 +61,15 @@ class FeeCalculator:
         Returns:
             Dict with max bid and resulting total cost
         """
-        # target_price = winning_bid * (1 + fee_percent)
-        # winning_bid = target_price / (1 + fee_percent)
+        max_bid = target_price
 
-        fee_multiplier = 1 + FeeCalculator.BUYER_FEE_PERCENT
-        max_bid = int(target_price / fee_multiplier)
-        resulting_cost = max_bid * fee_multiplier
+        for _ in range(10):
+            cost_calc = FeeCalculator.calculate_total_cost(max_bid)
+            if cost_calc['total_cost'] <= target_price:
+                break
+            max_bid -= 100
+
+        resulting_cost = FeeCalculator.calculate_total_cost(max_bid)['total_cost']
 
         return {
             'target_price': target_price,

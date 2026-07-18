@@ -64,25 +64,27 @@ class BidderAnalyzer:
                 if stats['bid_count'] > 0 else 0
             )
 
-        # Identify heavy hitters (bidders with many bids)
-        heavy_hitters = []
+        # Calculate bidder statistics for all bidders
+        all_bidder_stats = []
         total_bids = len(bidding_history)
 
         for bidder, stats in bidder_stats.items():
             bid_percentage = stats['bid_count'] / total_bids if total_bids > 0 else 0
 
-            if bid_percentage >= 0.15:  # More than 15% of all bids
-                heavy_hitters.append({
-                    'bidder': bidder,
-                    'bid_count': stats['bid_count'],
-                    'bid_percentage': round(bid_percentage * 100, 1),
-                    'max_bid': stats['max_bid'],
-                    'avg_bid': round(stats['avg_bid']),
-                    'risk_level': self._assess_bidder_risk(bid_percentage)
-                })
+            all_bidder_stats.append({
+                'bidder': bidder,
+                'bid_count': stats['bid_count'],
+                'bid_percentage': round(bid_percentage * 100, 1),
+                'max_bid': stats['max_bid'],
+                'avg_bid': round(stats['avg_bid']),
+                'risk_level': self._assess_bidder_risk(bid_percentage)
+            })
 
-        # Sort by bid count
-        heavy_hitters.sort(key=lambda x: x['bid_count'], reverse=True)
+        # Sort by bid count (most active first)
+        all_bidder_stats.sort(key=lambda x: x['bid_count'], reverse=True)
+
+        # Identify heavy hitters (bidders with many bids)
+        heavy_hitters = [b for b in all_bidder_stats if b['bid_percentage'] >= 15]
 
         # Assess overall competitive risk
         risk_level = self._assess_overall_risk(len(bidding_history), len(heavy_hitters))
@@ -90,7 +92,7 @@ class BidderAnalyzer:
         return {
             'total_bids': total_bids,
             'unique_bidders': len(bidder_stats),
-            'bidders': list(bidder_stats.values()),
+            'all_bidders': all_bidder_stats,
             'heavy_hitters': heavy_hitters,
             'competitive_risk': risk_level,
             'recommendation': self._get_recommendation(risk_level, heavy_hitters)

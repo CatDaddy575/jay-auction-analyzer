@@ -9,6 +9,12 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 import re
 import json
+import pandas as pd
+import sys
+sys.path.insert(0, '/app')
+from src.scraper.auctions import AuctionScraper
+from src.market.bidder_analyzer import BidderAnalyzer
+from src.market.fees import FeeCalculator
 
 # Page config
 st.set_page_config(
@@ -200,7 +206,6 @@ else:
 
             # Market analysis chart (placeholder)
             st.subheader("Price Distribution")
-            import pandas as pd
             data = pd.DataFrame({
                 'Source': ['Classic.com', 'CarsAndBids', 'ClassicCars', 'eBay', 'BringATrailer'],
                 'Estimated Value': [32000, 33500, 31500, 32800, 33200]
@@ -210,116 +215,157 @@ else:
         with tab3:
             st.header("Max Bid Recommendation")
 
-            # BringATrailer buyer fees
             st.subheader("Buyer's Fee Calculation")
 
-            current_bid_val = 38250  # From earlier scrape
+            # Current bid from scrape
+            try:
+                fee_calc = FeeCalculator.calculate_total_cost(current_bid)
 
-            col1, col2, col3 = st.columns(3)
+                col1, col2, col3 = st.columns(3)
 
-            with col1:
-                st.write("**Current Bid:** ${:,}".format(current_bid_val))
+                with col1:
+                    st.write(f"**Current Bid:** ${current_bid:,}")
 
-            with col2:
-                st.write("**Buyer's Fee:** 8%")
+                with col2:
+                    st.write(f"**Buyer's Fee:** {fee_calc['buyer_fee_percent']:.2f}%")
 
-            with col3:
-                fee = current_bid_val * 0.08
-                total_with_fee = current_bid_val + fee
-                st.write("**Total Cost:** ${:,}".format(int(total_with_fee)))
+                with col3:
+                    st.write(f"**Total Cost:** ${fee_calc['total_cost']:,}")
 
-            st.markdown("---")
+                st.markdown("---")
 
-            # Market-based recommendation
-            st.subheader("Max Bid Recommendation")
-
-            fair_market_value = 32500  # From analysis
-            fee_percent = 0.08
-
-            # Calculate max bid with fees
-            max_price_before_fees = fair_market_value
-            max_bid_with_fees = max_price_before_fees / (1 + fee_percent)
-
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                st.metric("Fair Market Value", f"${fair_market_value:,}")
-
-            with col2:
-                st.metric("Max Bid Amount", f"${int(max_bid_with_fees):,}")
-
-            with col3:
-                st.metric("Total Cost (with 8% fee)", f"${fair_market_value:,}")
-
-            # Recommendation box
-            if current_bid_val > max_bid_with_fees:
-                st.markdown(
-                    f"""
-                    <div class="recommendation-bad">
-                    <h4>⚠️ AVOID - Overpriced</h4>
-                    Current bid (<strong>${current_bid_val:,}</strong>) exceeds recommended max bid (<strong>${int(max_bid_with_fees):,}</strong>)
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+                # Set target budget
+                st.subheader("Your Budget")
+                target_budget = st.number_input(
+                    "What's your max total budget (including fees)?",
+                    min_value=1000,
+                    value=35000,
+                    step=1000
                 )
-            elif current_bid_val > max_bid_with_fees * 0.95:
-                st.markdown(
-                    f"""
-                    <div class="recommendation-warning">
-                    <h4>⚠️ CAUTION - Getting Expensive</h4>
-                    Current bid is approaching max recommended bid. Proceed carefully.
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    f"""
-                    <div class="recommendation-good">
-                    <h4>✅ GOOD OPPORTUNITY</h4>
-                    Current bid (<strong>${current_bid_val:,}</strong>) is below recommended max bid (<strong>${int(max_bid_with_fees):,}</strong>)
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+
+                # Calculate max bid for budget
+                max_bid_calc = FeeCalculator.calculate_max_bid(target_budget)
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.metric("Your Budget", f"${target_budget:,}")
+
+                with col2:
+                    st.metric("Max Bid Amount", f"${max_bid_calc['max_bid']:,}")
+
+                with col3:
+                    st.metric("Resulting Total", f"${max_bid_calc['resulting_total_cost']:,}")
+
+                st.info(max_bid_calc['note'])
+
+                st.markdown("---")
+
+                # Recommendation
+                st.subheader("Bid Recommendation")
+                if current_bid > max_bid_calc['max_bid']:
+                    st.markdown(
+                        f"""
+                        <div class="recommendation-bad">
+                        <h4>⚠️ AVOID - Overpriced</h4>
+                        Current bid (<strong>${current_bid:,}</strong>) exceeds your max bid (<strong>${max_bid_calc['max_bid']:,}</strong>)
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                elif current_bid > max_bid_calc['max_bid'] * 0.9:
+                    st.markdown(
+                        f"""
+                        <div class="recommendation-warning">
+                        <h4>⚠️ CAUTION - Getting Close</h4>
+                        Current bid is approaching your limit. Proceed with caution.
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        f"""
+                        <div class="recommendation-good">
+                        <h4>✅ GOOD OPPORTUNITY</h4>
+                        Current bid (<strong>${current_bid:,}</strong>) is below your max bid (<strong>${max_bid_calc['max_bid']:,}</strong>)
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+            except Exception as e:
+                st.error(f"Error calculating fees: {e}")
 
         with tab4:
             st.header("Bidder Analysis")
 
-            st.subheader("Competitive Landscape")
-            col1, col2, col3 = st.columns(3)
+            try:
+                # Parse bidding history from auction page
+                scraper = AuctionScraper()
+                result = scraper.parse_auction_page(html)
+                bidding_history = result['bidding_history']
 
-            with col1:
-                st.metric("Total Bids", "24")
+                if bidding_history:
+                    # Analyze bidders
+                    analyzer = BidderAnalyzer()
+                    analysis = analyzer.analyze_bidding_history(bidding_history)
 
-            with col2:
-                st.metric("Unique Bidders", "12")
+                    # Display summary
+                    st.subheader("Competitive Landscape")
+                    col1, col2, col3, col4 = st.columns(4)
 
-            with col3:
-                st.metric("Heavy Hitters", "3")
+                    with col1:
+                        st.metric("Total Bids", analysis['total_bids'])
 
-            st.subheader("Bidder Patterns")
+                    with col2:
+                        st.metric("Unique Bidders", analysis['unique_bidders'])
 
-            # Placeholder bidder analysis
-            bidder_data = pd.DataFrame({
-                'Bidder': ['bidder_447', 'bidder_892', 'bidder_156', 'bidder_723', 'bidder_304'],
-                'Bids': [8, 5, 4, 3, 2],
-                'Win Rate': ['85%', '72%', '68%', '45%', '30%'],
-                'Risk Level': ['🔴 HIGH', '🟠 MEDIUM', '🟠 MEDIUM', '🟡 LOW', '🟢 LOW']
-            })
+                    with col3:
+                        st.metric("Heavy Hitters", len(analysis['heavy_hitters']))
 
-            st.dataframe(bidder_data, use_container_width=True)
+                    with col4:
+                        st.metric("Risk Level", analysis['competitive_risk'])
 
-            st.markdown("""
-            ### Heavy Hitter Alert 🚨
+                    st.markdown("---")
 
-            **Bidder #447** is a known aggressive bidder:
-            - 85% win rate
-            - 8 bids on this auction
-            - Drives prices up significantly
+                    # All bidders table
+                    st.subheader("All Bidders")
+                    if analysis['all_bidders']:
+                        bidder_df = pd.DataFrame([
+                            {
+                                'Bidder': b['bidder'],
+                                'Bid Count': b['bid_count'],
+                                'Bid %': f"{b['bid_percentage']:.1f}%",
+                                'Max Bid': f"${b['max_bid']:,}",
+                                'Avg Bid': f"${b['avg_bid']:,}",
+                                'Risk': b['risk_level']
+                            }
+                            for b in analysis['all_bidders']
+                        ])
+                        st.dataframe(bidder_df, use_container_width=True)
 
-            **Recommendation:** This auction will be competitive. Consider the risk carefully.
-            """)
+                    # Heavy hitters warning
+                    if analysis['heavy_hitters']:
+                        st.markdown("---")
+                        st.subheader("⚠️ Heavy Hitters Alert")
+                        for hitter in analysis['heavy_hitters'][:3]:
+                            st.warning(
+                                f"**{hitter['bidder']}** - {hitter['bid_count']} bids "
+                                f"({hitter['bid_percentage']:.1f}% of total) | "
+                                f"Max: ${hitter['max_bid']:,} | Risk: {hitter['risk_level']}"
+                            )
+
+                    # Overall recommendation
+                    st.markdown("---")
+                    st.subheader("Competitive Assessment")
+                    st.info(analysis['recommendation'])
+
+                else:
+                    st.warning("No bidding history found on this page. Auction may not have started yet.")
+
+            except Exception as e:
+                st.error(f"Error analyzing bidders: {e}")
 
 # Footer
 st.markdown("---")

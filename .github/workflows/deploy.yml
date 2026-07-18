@@ -1,0 +1,17 @@
+name: Auto-Deploy to Streamlit Cloud
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Trigger Streamlit Cloud Deploy
+        run: |
+          echo "Code pushed to master branch"
+          echo "Streamlit Cloud will automatically deploy your changes"
+          echo "Check your app at: https://jay-auction-analyzer.streamlit.app"
