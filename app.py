@@ -214,6 +214,7 @@ else:
 
         with tab3:
             st.header("Max Bid Recommendation")
+            st.write("*Based on estimated market value — Jay tells you when to stop bidding*")
 
             st.subheader("Auction Fee Category")
             st.write("**Most car auctions: 5% fee (default)**")
@@ -228,73 +229,81 @@ else:
             fee_rate = 0.05 if "5%" in fee_category else 0.10
 
             st.markdown("---")
-            st.subheader("Buyer's Fee Calculation")
 
-            # Current bid from scrape
             try:
-                fee_calc = FeeCalculator.calculate_total_cost(current_bid, fee_rate)
-
-                col1, col2, col3 = st.columns(3)
-
+                # Current bid info
+                st.subheader("Current Status")
+                col1, col2 = st.columns(2)
                 with col1:
-                    st.write(f"**Current Bid:** ${current_bid:,}")
-
+                    st.metric("Current Bid", f"${current_bid:,}")
                 with col2:
-                    st.write(f"**Buyer's Fee:** {fee_calc['buyer_fee_percent']:.2f}%")
-
-                with col3:
-                    st.write(f"**Total Cost:** ${fee_calc['total_cost']:,}")
-
-                if fee_calc['fee_capped']:
-                    st.info(f"⚠️ Fee is capped at the maximum for this category")
+                    fee_calc = FeeCalculator.calculate_total_cost(current_bid, fee_rate)
+                    st.metric("Total Cost (with fees)", f"${fee_calc['total_cost']:,}")
 
                 st.markdown("---")
 
-                # Set target budget
-                st.subheader("Your Budget")
-                target_budget = st.number_input(
-                    "What's your max total budget (including fees)?",
-                    min_value=1000,
-                    value=35000,
-                    step=1000
-                )
+                # Market value recommendation (placeholder for now)
+                st.subheader("Market Value Analysis")
+                st.info("🔍 Analyzing market data from multiple sources...")
 
-                # Calculate max bid for budget
-                max_bid_calc = FeeCalculator.calculate_max_bid(target_budget, fee_rate)
+                # For now, use placeholder; when market data sources are implemented, use real values
+                estimated_market_value = 32500  # TODO: Replace with actual market analysis
 
                 col1, col2, col3 = st.columns(3)
-
                 with col1:
-                    st.metric("Your Budget", f"${target_budget:,}")
-
+                    st.metric("Estimated Market Value", f"${estimated_market_value:,}")
                 with col2:
-                    st.metric("Max Bid Amount", f"${max_bid_calc['max_bid']:,}")
-
+                    st.metric("Fair Range", "$28k - $37k")
                 with col3:
-                    st.metric("Resulting Total", f"${max_bid_calc['resulting_total_cost']:,}")
+                    diff = estimated_market_value - current_bid
+                    diff_color = "🟢" if diff > 0 else "🔴"
+                    st.metric(f"{diff_color} vs Current Bid", f"${diff:+,}")
 
-                st.info(max_bid_calc['note'])
+                st.markdown("---")
+
+                # Calculate max bid based on market value
+                st.subheader("Recommended Max Bid")
+                st.write("**How much should you bid before overpaying?**")
+
+                max_bid_calc = FeeCalculator.calculate_max_bid(estimated_market_value, fee_rate)
+
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Market Value", f"${estimated_market_value:,}")
+                with col2:
+                    st.metric("Your Max Bid", f"${max_bid_calc['max_bid']:,}")
+                with col3:
+                    st.metric("Total w/ Fees", f"${max_bid_calc['resulting_total_cost']:,}")
+                with col4:
+                    remaining = max_bid_calc['max_bid'] - current_bid
+                    remaining_color = "🟢" if remaining > 0 else "🔴"
+                    st.metric(f"{remaining_color} Room to Bid", f"${remaining:+,}")
+
+                if max_bid_calc['fee_capped']:
+                    st.warning("⚠️ Fee is at maximum for this category")
 
                 st.markdown("---")
 
                 # Recommendation
-                st.subheader("Bid Recommendation")
+                st.subheader("Verdict")
                 if current_bid > max_bid_calc['max_bid']:
                     st.markdown(
                         f"""
                         <div class="recommendation-bad">
-                        <h4>⚠️ AVOID - Overpriced</h4>
-                        Current bid (<strong>${current_bid:,}</strong>) exceeds your max bid (<strong>${max_bid_calc['max_bid']:,}</strong>)
+                        <h4>🛑 STOP - You're Overpaying</h4>
+                        Current bid (<strong>${current_bid:,}</strong>) is already above fair market value.
+                        <br/>Stop bidding here — not worth paying more than <strong>${max_bid_calc['max_bid']:,}</strong>
                         </div>
                         """,
                         unsafe_allow_html=True
                     )
-                elif current_bid > max_bid_calc['max_bid'] * 0.9:
+                elif current_bid > max_bid_calc['max_bid'] * 0.85:
                     st.markdown(
                         f"""
                         <div class="recommendation-warning">
-                        <h4>⚠️ CAUTION - Getting Close</h4>
-                        Current bid is approaching your limit. Proceed with caution.
+                        <h4>⚠️ CAUTION - Near Your Limit</h4>
+                        You have only <strong>${max_bid_calc['max_bid'] - current_bid:,}</strong> before hitting fair market value.
+                        <br/>Be strategic — don't overpay just to win.
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -303,15 +312,16 @@ else:
                     st.markdown(
                         f"""
                         <div class="recommendation-good">
-                        <h4>✅ GOOD OPPORTUNITY</h4>
-                        Current bid (<strong>${current_bid:,}</strong>) is below your max bid (<strong>${max_bid_calc['max_bid']:,}</strong>)
+                        <h4>✅ GOOD VALUE</h4>
+                        Current bid (<strong>${current_bid:,}</strong>) is below fair market value.
+                        <br/>You can bid up to <strong>${max_bid_calc['max_bid']:,}</strong> and still stay fair.
                         </div>
                         """,
                         unsafe_allow_html=True
                     )
 
             except Exception as e:
-                st.error(f"Error calculating fees: {e}")
+                st.error(f"Error calculating recommendation: {e}")
 
         with tab4:
             st.header("Bidder Analysis")
