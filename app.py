@@ -11,7 +11,7 @@ import re
 import json
 import pandas as pd
 import sys
-sys.path.insert(0, '/app')
+sys.path.insert(0, '.')
 from src.scraper.auctions import AuctionScraper
 from src.market.bidder_analyzer import BidderAnalyzer
 from src.market.fees import FeeCalculator
@@ -326,86 +326,111 @@ else:
 
         with tab4:
             st.header("Bidder Analysis")
+            st.write("*Threat assessment and win rate analysis for current competitors*")
 
             try:
-                # Parse bidding history from auction page (with Playwright fallback)
-                scraper = AuctionScraper()
-                result = scraper.parse_auction_page(html, url=auction_url)
-                bidding_history = result['bidding_history']
+                # Extract bidder names from auction page
+                soup_current = BeautifulSoup(html, 'html.parser')
 
-                st.caption(f"ℹ️ Extracted {len(bidding_history)} bids from auction page")
+                # Get current bid holder (usually in a link with /member/)
+                bidder_names = set()
+                member_links = soup_current.find_all('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
 
-                if bidding_history:
-                    # Analyze bidders
-                    analyzer = BidderAnalyzer()
-                    analysis = analyzer.analyze_bidding_history(bidding_history)
+                for link in member_links:
+                    bidder_text = link.get_text(strip=True)
+                    if bidder_text and len(bidder_text) > 1 and len(bidder_text) < 50:
+                        bidder_names.add(bidder_text)
 
-                    # Display summary
-                    st.subheader("Competitive Landscape")
-                    col1, col2, col3, col4 = st.columns(4)
+                bidder_list = list(bidder_names)
 
-                    with col1:
-                        st.metric("Total Bids", analysis['total_bids'])
+                if bidder_list:
+                    st.caption(f"Analyzing {len(bidder_list)} current competitor(s)...")
 
-                    with col2:
-                        st.metric("Unique Bidders", analysis['unique_bidders'])
+                    # Get market value from earlier in session (placeholder for now)
+                    estimated_market_value = 32500  # TODO: Use actual market value from Market Value tab
 
-                    with col3:
-                        st.metric("Heavy Hitters", len(analysis['heavy_hitters']))
+                    # Analyze all bidders
+                    bidders_analyzer = CurrentBiddersAnalyzer()
+                    competitors = bidders_analyzer.analyze_auction_competitors(
+                        bidder_list,
+                        estimated_market_value=estimated_market_value
+                    )
 
-                    with col4:
-                        st.metric("Risk Level", analysis['competitive_risk'])
+                    if competitors and any(c for c in competitors if c):
+                        # Display overview metrics
+                        st.subheader("Competitive Overview")
+                        col1, col2, col3 = st.columns(3)
 
-                    st.markdown("---")
+                        with col1:
+                            avg_threat = sum(c['threat_level'] for c in competitors if c) / len([c for c in competitors if c])
+                            st.metric("Average Threat", f"{avg_threat:.0f}/100")
 
-                    # All bidders table
-                    st.subheader("All Bidders")
-                    if analysis['all_bidders']:
-                        bidder_df = pd.DataFrame([
-                            {
-                                'Bidder': b['bidder'],
-                                'Bid Count': b['bid_count'],
-                                'Bid %': f"{b['bid_percentage']:.1f}%",
-                                'Max Bid': f"${b['max_bid']:,}",
-                                'Avg Bid': f"${b['avg_bid']:,}",
-                                'Risk': b['risk_level']
-                            }
-                            for b in analysis['all_bidders']
-                        ])
-                        st.dataframe(bidder_df, use_container_width=True)
+                        with col2:
+                            st.metric("Total Competitors", len([c for c in competitors if c]))
 
-                    # Heavy hitters warning
-                    if analysis['heavy_hitters']:
+                        with col3:
+                            high_threat_count = len([c for c in competitors if c and c['threat_level'] > 50])
+                            st.metric("High Threat", high_threat_count)
+
                         st.markdown("---")
-                        st.subheader("⚠️ Heavy Hitters Alert")
-                        for hitter in analysis['heavy_hitters'][:3]:
-                            st.warning(
-                                f"**{hitter['bidder']}** - {hitter['bid_count']} bids "
-                                f"({hitter['bid_percentage']:.1f}% of total) | "
-                                f"Max: ${hitter['max_bid']:,} | Risk: {hitter['risk_level']}"
-                            )
 
-                    # Overall recommendation
-                    st.markdown("---")
-                    st.subheader("Competitive Assessment")
-                    st.info(analysis['recommendation'])
+                        # Display all competitors in a table
+                        st.subheader("Competitor Summary")
+                        comp_data = []
+                        for comp in competitors:
+                            if comp:
+                                threat_icon = '🔴' if comp['threat_level'] > 75 else '🟠' if comp['threat_level'] > 50 else '🟢'
+                                comp_data.append({
+                                    'Threat': threat_icon,
+                                    'Bidder': comp['bidder_name'],
+                                    'Win Rate': f"{comp['stats']['win_rate']}%",
+                                    'Bids': comp['stats']['total_bids'],
+                                    'Wins': comp['stats']['total_wins'],
+                                    'Type': comp['bidder_type'],
+                                    'Level': comp['threat_level']
+                                })
+
+                        if comp_data:
+                            comp_df = pd.DataFrame(comp_data)
+                            st.dataframe(comp_df, use_container_width=True, hide_index=True)
+
+                        st.markdown("---")
+
+                        # Detailed breakdown per competitor
+                        st.subheader("Detailed Analysis")
+                        for comp in competitors:
+                            if comp:
+                                threat = comp['threat_level']
+                                if threat > 75:
+                                    icon, color = '🔴', '#ff4444'
+                                elif threat > 50:
+                                    icon, color = '🟠', '#ffaa00'
+                                else:
+                                    icon, color = '🟢', '#00aa00'
+
+                                with st.expander(f"{icon} {comp['bidder_name']} — {comp['bidder_type']} (Threat: {threat}/100)"):
+                                    col1, col2, col3, col4 = st.columns(4)
+
+                                    with col1:
+                                        st.metric("Win Rate", f"{comp['stats']['win_rate']}%")
+                                    with col2:
+                                        st.metric("Total Bids", comp['stats']['total_bids'])
+                                    with col3:
+                                        st.metric("Total Wins", comp['stats']['total_wins'])
+                                    with col4:
+                                        st.metric("Threat", f"{comp['threat_level']}/100")
+
+                                    st.write(f"**Member Since:** {comp['stats']['member_since'] or 'Unknown'}")
+                                    st.write(f"**Strategy Recommendation:** {comp['recommendation']}")
+
+                    else:
+                        st.info("Bidder profiles loading... (This is a new feature - profiles cache over time)")
 
                 else:
-                    st.warning("""
-                    ⏳ **No bidding history found**
-
-                    This could mean:
-                    - The auction hasn't started yet (no bids placed)
-                    - Bid history is dynamically loaded and requires additional processing
-                    - The page structure is different than expected
-
-                    **Try:** Test with an active auction that has multiple bids already placed.
-                    """)
+                    st.warning("No bidders detected on this auction yet. Check back as the auction progresses.")
 
             except Exception as e:
-                st.error(f"❌ Error analyzing bidders: {str(e)}")
-                with st.expander("Debug info"):
-                    st.write("Check that the auction page fully loaded and has bidding activity.")
+                st.error(f"Error analyzing bidders: {str(e)}")
 
 # Footer
 st.markdown("---")
