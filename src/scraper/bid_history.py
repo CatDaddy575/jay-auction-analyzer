@@ -254,24 +254,24 @@ class BidHistoryScraper:
 
     def get_top_bidders(self, auction_url, limit=10):
         """
-        Get top N active bidders from auction.
-        Returns bidders ranked by activity (current high bidder first)
+        Get top N active bidders from auction, filtered by actual bid amounts.
+        Returns bidders ranked by highest bid (descending).
+        Filters out bidders with $0 bids.
+        Returns up to 'limit' bidders, or fewer if fewer than 'limit' actually bid.
         """
         all_bids = self.scrape_bid_history(auction_url)
 
         if not all_bids:
             return []
 
-        # Remove duplicates, keep first occurrence (most recent)
-        seen = set()
-        unique_bidders = []
-        for bid in all_bids:
-            name = bid['bidder_name']
-            if name not in seen:
-                seen.add(name)
-                unique_bidders.append(bid)
+        # Filter out bidders with no bids ($0 or None)
+        bidders_with_bids = [b for b in all_bids if b.get('bid_amount', 0) > 0]
 
-        return unique_bidders[:limit]
+        if not bidders_with_bids:
+            return []
+
+        # Return top N (or fewer if less than N bidders)
+        return bidders_with_bids[:limit]
 
     def cleanup(self):
         """Close browser"""

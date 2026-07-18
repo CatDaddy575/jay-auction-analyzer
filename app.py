@@ -350,7 +350,11 @@ else:
 
                 if top_bidders and len(top_bidders) > 0:
                     bidder_names = [b['bidder_name'] for b in top_bidders]
-                    st.caption(f"Found {len(bidder_names)} active bidders on this auction")
+                    bidder_count = len(bidder_names)
+                    if bidder_count < 10:
+                        st.caption(f"Found {bidder_count} active bidders on this auction (less than 10)")
+                    else:
+                        st.caption(f"Showing top 10 of {bidder_count} active bidders")
 
                     # Get market value from earlier in session
                     estimated_market_value = 28000  # TODO: Use actual market value
@@ -381,17 +385,21 @@ else:
                         st.markdown("---")
 
                         # Display all competitors in a table
-                        st.subheader("Top 10 Bidders (Ranked by Highest Bid)")
+                        st.subheader(f"Top Bidders (Ranked by Highest Bid on This Auction)")
                         comp_data = []
-                        for idx, comp in enumerate(competitors, 1):
+                        for idx, bidder_info in enumerate(top_bidders, 1):
+                            # Find matching competitor analysis
+                            comp = next((c for c in competitors if c and c['bidder_name'] == bidder_info['bidder_name']), None)
                             if comp:
                                 threat_icon = '🔴' if comp['threat_level'] > 75 else '🟠' if comp['threat_level'] > 50 else '🟢'
+                                bid_amount = bidder_info.get('bid_amount', 0)
+                                bid_count_this_auction = bidder_info.get('bid_count', 0)
                                 comp_data.append({
                                     'Rank': idx,
                                     'Threat': threat_icon,
                                     'Bidder': comp['bidder_name'],
-                                    'Highest Bid': f"${comp['stats'].get('bid_amount', 0):,.0f}" if comp['stats'].get('bid_amount') else 'N/A',
-                                    'Bid Count': comp['stats'].get('bid_count', comp['stats']['total_bids']),
+                                    'Highest Bid': f"${bid_amount:,.0f}" if bid_amount > 0 else '$0',
+                                    'Bids On Auction': bid_count_this_auction,
                                     'Win Rate': f"{comp['stats']['win_rate']}%",
                                     'Type': comp['bidder_type'],
                                     'Level': comp['threat_level']
