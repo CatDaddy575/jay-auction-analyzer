@@ -1,41 +1,68 @@
 from bs4 import BeautifulSoup
 import re
 
+try:
+    from playwright.sync_api import sync_playwright
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+
 class AuctionScraper:
     """Extract auction data from BringATrailer pages"""
 
-    def parse_auction_page(self, html):
-        """Parse HTML and extract auction details from BringATrailer"""
+    def parse_auction_page(self, html, url=None):
+        """
+        Parse HTML and extract auction details from BringATrailer
+        Tries static HTML first, falls back to Playwright if bid history not found
+        """
         soup = BeautifulSoup(html, 'html.parser')
 
         # Extract title
         title_elem = soup.find('h1', class_='post-title listing-post-title')
         title = title_elem.get_text(strip=True) if title_elem else ''
 
-        # Extract current bid (in format "USD $38,250")
+        # Extract current bid
         current_bid = 0
         listing_avail = soup.find('div', class_='listing-available')
         if listing_avail:
-            # Look for "Current Bid:" specifically
             bid_label = listing_avail.find('span', class_='info-label', string=lambda s: 'current' in s.lower() if s else False)
             if bid_label:
-                # The price is in the next sibling or nearby strong tag
                 value_elem = bid_label.find_next('strong', class_='info-value')
                 if value_elem:
                     current_bid = self._parse_price(value_elem, None)
 
-        # Extract other info
+        # Try to extract bid count from the table
+        bid_count = 0
+        bid_count_elem = soup.find('td', class_='number-bids-value')
+        if bid_count_elem:
+            bid_count = self._extract_int(bid_count_elem, '')
+
         auction_data = {
             'title': title,
-            'asking_price': 0,  # BringATrailer typically doesn't show asking price on listing page
+            'asking_price': 0,
             'current_bid': current_bid,
-            'bid_count': 0,  # Would need to parse bid history to count
-            'ends_at': None,  # Would need to parse countdown
+            'bid_count': bid_count,
+            'ends_at': None,
             'description': self._extract_text(soup, '.listing-description') or self._extract_text(soup, '.description')
         }
 
-        # Extract bidding history
+        # Try to extract bidding history from static HTML first
+        bidding_history = self._extract_bidding_history_static(soup)
+
+        # If no bids found and URL provided, try Playwright as fallback
+        if not bidding_history and url and PLAYWRIGHT_AVAILABLE:
+            try:
+                bidding_history = self._extract_bidding_history_playwright(url)
+            except Exception as e:
+                print(f"Playwright extraction failed: {e}")
+
+        return {'auction_data': auction_data, 'bidding_history': bidding_history}
+
+    def _extract_bidding_history_static(self, soup):
+        """Extract bidding history from static HTML (fast, always works)"""
         bidding_history = []
+
+        # Try multiple possible selectors for bid history
         bid_history_section = soup.find('div', class_='bid-history-container')
 
         if bid_history_section:
@@ -53,7 +80,47 @@ class AuctionScraper:
                     }
                     bidding_history.append(bid_entry)
 
-        return {'auction_data': auction_data, 'bidding_history': bidding_history}
+        return bidding_history
+
+    def _extract_bidding_history_playwright(self, url):
+        """Extract bidding history using Playwright (slower, handles JavaScript)"""
+        if not PLAYWRIGHT_AVAILABLE:
+            return []
+
+        bidding_history = []
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.goto(url, wait_until='networkidle')
+
+                # Wait for bid history to load
+                page.wait_for_selector('[class*="bid"]', timeout=5000)
+
+                # Get the rendered HTML and parse with BeautifulSoup
+                html = page.content()
+                soup = BeautifulSoup(html, 'html.parser')
+
+                # Try to find bid entries in the rendered page
+                bid_entries = soup.find_all('div', class_=lambda x: x and 'bid' in x.lower())
+
+                # Parse each bid entry (selector may vary)
+                for entry in bid_entries[:50]:  # Limit to 50 bids
+                    bidder = entry.find(class_=lambda x: x and 'bidder' in x.lower())
+                    amount = entry.find(class_=lambda x: x and 'amount' in x.lower())
+
+                    if bidder and amount:
+                        bidding_history.append({
+                            'bidder': bidder.get_text(strip=True),
+                            'amount': self._parse_price(amount, None),
+                            'timestamp': None
+                        })
+
+                browser.close()
+        except Exception as e:
+            print(f"Playwright error: {e}")
+
+        return bidding_history
 
     def _extract_text(self, element, selector):
         """Safely extract text from element"""

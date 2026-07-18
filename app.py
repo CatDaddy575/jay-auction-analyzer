@@ -317,9 +317,9 @@ else:
             st.header("Bidder Analysis")
 
             try:
-                # Parse bidding history from auction page
+                # Parse bidding history from auction page (with Playwright fallback)
                 scraper = AuctionScraper()
-                result = scraper.parse_auction_page(html)
+                result = scraper.parse_auction_page(html, url=auction_url)
                 bidding_history = result['bidding_history']
 
                 if bidding_history:
