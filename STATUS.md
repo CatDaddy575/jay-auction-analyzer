@@ -16,14 +16,19 @@
   - Config management
 
 ## NOW
-- Testing browser login with live auctions
-- Refining auction scraping logic
+- ✅ Scraper successfully extracting live auction data
+- ✅ Title extraction working
+- ✅ Current bid extraction working
+- Next: Refine bidding history extraction
 
 ## NEXT
-- Test live auction data extraction
+- Extract bidding history from auction page
+- Extract auction end time
+- Extract description
 - Build bidder intelligence/pattern analysis
 - Build market value analysis & competitor tracking
 - Test strategy recommendations
+- Test adaptive monitoring scheduler on live auctions
 - Extensive live testing before automated bidding
 
 ## ARCHITECTURE
