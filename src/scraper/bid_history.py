@@ -71,12 +71,22 @@ class BidHistoryScraper:
                 return []
 
     def _parse_bid_history(self, html, auction_url):
-        """Parse bid history from page HTML - extract only from comments/bidding activity"""
+        """Parse bid history from page HTML - extract comments + prioritize current high bidder"""
         soup = BeautifulSoup(html, 'html.parser')
         bidders_list = []
 
         # First, find the seller so we can exclude them
         seller_name = self._find_seller(soup)
+
+        # PRIORITY 1: Extract current high bidder from bid-information section
+        current_high_bidder = self._find_current_high_bidder(soup)
+        if current_high_bidder and current_high_bidder.lower() != seller_name.lower() if seller_name else True:
+            bidders_list.append({
+                'bidder_name': current_high_bidder,
+                'bid_amount': None,
+                'timestamp': None,
+                'result': 'active'
+            })
 
         # Extract bidders from comments section (where bid activity happens)
         comments = soup.find_all('div', class_='comment')
@@ -84,6 +94,10 @@ class BidHistoryScraper:
         if comments:
             # Extract unique bidder names from comments
             seen_bidders = {}
+            # Track that we already have the current high bidder
+            if current_high_bidder:
+                seen_bidders[current_high_bidder] = True
+
             for comment in comments:
                 # Find member link in this comment
                 member_link = comment.find('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
@@ -154,6 +168,28 @@ class BidHistoryScraper:
                 })
 
         return bidders_list
+
+    def _find_current_high_bidder(self, soup):
+        """Extract the current high bidder from bid-information section"""
+        try:
+            bid_info = soup.find('div', class_='bid-information')
+            if not bid_info:
+                return None
+
+            # Look for the bidder link in bid information
+            member_link = bid_info.find('a', href=lambda x: x and '/member/' in (x if isinstance(x, str) else ''))
+            if member_link:
+                bidder_name = member_link.get_text(strip=True).lstrip('@')
+                # Clean up seller marker if present
+                if '(the seller)' in bidder_name.lower():
+                    bidder_name = bidder_name.split('(')[0].strip()
+                if '(seller)' in bidder_name.lower():
+                    bidder_name = bidder_name.split('(')[0].strip()
+                return bidder_name if bidder_name else None
+
+            return None
+        except:
+            return None
 
     def _find_seller(self, soup):
         """Find the seller's name from the auction page"""
