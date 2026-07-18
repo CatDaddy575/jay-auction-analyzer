@@ -331,10 +331,20 @@ else:
 
             try:
                 # Extract top 10 bidders from auction using Playwright
-                with st.spinner("🔍 Analyzing bidders (loading auction history...)"):
-                    bid_scraper = BidHistoryScraper()
-                    top_bidders = bid_scraper.get_top_bidders(auction_url, limit=10)
-                    bid_scraper.cleanup()
+                st.caption("Loading bidders from auction...")
+                bid_scraper = BidHistoryScraper()
+
+                try:
+                    with st.spinner("🔍 Analyzing bidders (this may take 15-30 seconds)..."):
+                        top_bidders = bid_scraper.get_top_bidders(auction_url, limit=10)
+                except Exception as scraper_error:
+                    st.error(f"Bidder extraction failed: {str(scraper_error)}")
+                    top_bidders = []
+                finally:
+                    try:
+                        bid_scraper.cleanup()
+                    except:
+                        pass
 
                 if top_bidders and len(top_bidders) > 0:
                     bidder_names = [b['bidder_name'] for b in top_bidders]
