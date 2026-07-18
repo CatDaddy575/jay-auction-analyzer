@@ -15,6 +15,7 @@ sys.path.insert(0, '/app')
 from src.scraper.auctions import AuctionScraper
 from src.market.bidder_analyzer import BidderAnalyzer
 from src.market.fees import FeeCalculator
+from src.bidder.current_bidders import CurrentBiddersAnalyzer
 
 # Page config
 st.set_page_config(

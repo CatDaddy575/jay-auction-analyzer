@@ -83,7 +83,7 @@ class AuctionScraper:
         return bidding_history
 
     def _extract_bidding_history_playwright(self, url):
-        """Extract bidding history using Playwright (slower, handles JavaScript)"""
+        """Extract bidding history using Playwright (renders JavaScript, extracts bids)"""
         if not PLAYWRIGHT_AVAILABLE:
             return []
 
@@ -92,33 +92,62 @@ class AuctionScraper:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
-                page.goto(url, wait_until='networkidle')
 
-                # Wait for bid history to load
-                page.wait_for_selector('[class*="bid"]', timeout=5000)
+                # Navigate and wait for page to fully load
+                page.goto(url, wait_until='networkidle', timeout=30000)
+                page.wait_for_load_state('networkidle', timeout=15000)
 
-                # Get the rendered HTML and parse with BeautifulSoup
+                # Get the fully rendered HTML
                 html = page.content()
                 soup = BeautifulSoup(html, 'html.parser')
 
-                # Try to find bid entries in the rendered page
-                bid_entries = soup.find_all('div', class_=lambda x: x and 'bid' in x.lower())
+                # Look for bid history section/table in rendered HTML
+                # BringATrailer uses various structures, so try multiple approaches
 
-                # Parse each bid entry (selector may vary)
-                for entry in bid_entries[:50]:  # Limit to 50 bids
-                    bidder = entry.find(class_=lambda x: x and 'bidder' in x.lower())
-                    amount = entry.find(class_=lambda x: x and 'amount' in x.lower())
+                # Approach 1: Look for table rows with bid data
+                bid_rows = soup.find_all('tr', class_=lambda x: x and 'bid' in x.lower())
 
-                    if bidder and amount:
-                        bidding_history.append({
-                            'bidder': bidder.get_text(strip=True),
-                            'amount': self._parse_price(amount, None),
-                            'timestamp': None
-                        })
+                if not bid_rows:
+                    # Approach 2: Look for list items with bid info
+                    bid_rows = soup.find_all('li', class_=lambda x: x and 'bid' in x.lower())
+
+                if not bid_rows:
+                    # Approach 3: Look for divs that contain bidder/amount data
+                    bid_containers = soup.find_all('div', class_=lambda x: x and ('bid' in x.lower() or 'history' in x.lower()))
+
+                    for container in bid_containers:
+                        # Extract bidder and amount from container text
+                        text = container.get_text(strip=True)
+                        if '$' in text and len(text) > 10:  # Likely contains price
+                            bid_rows.append(container)
+
+                # Parse each bid row
+                for row in bid_rows[:100]:  # Limit to 100 bids
+                    row_text = row.get_text(strip=True)
+
+                    # Look for price pattern
+                    price_match = re.search(r'\$[\d,]+', row_text)
+                    if price_match:
+                        amount = self._parse_price(price_match.group(), None)
+
+                        # Extract bidder name (usually comes before or after price)
+                        parts = row_text.split('$')
+                        bidder_text = parts[0].strip() if len(parts) > 1 else row_text
+
+                        # Clean up bidder name
+                        bidder = re.sub(r'[0-9\s]+$', '', bidder_text).strip()
+
+                        if bidder and len(bidder) > 2:  # Reasonable bidder name length
+                            bidding_history.append({
+                                'bidder': bidder,
+                                'amount': amount,
+                                'timestamp': None
+                            })
 
                 browser.close()
+
         except Exception as e:
-            print(f"Playwright error: {e}")
+            print(f"Playwright extraction error: {e}")
 
         return bidding_history
 
