@@ -381,7 +381,7 @@ else:
                         st.markdown("---")
 
                         # Display all competitors in a table
-                        st.subheader("Top 10 Bidders (Ranked by Activity)")
+                        st.subheader("Top 10 Bidders (Ranked by Highest Bid)")
                         comp_data = []
                         for idx, comp in enumerate(competitors, 1):
                             if comp:
@@ -390,8 +390,9 @@ else:
                                     'Rank': idx,
                                     'Threat': threat_icon,
                                     'Bidder': comp['bidder_name'],
+                                    'Highest Bid': f"${comp['stats'].get('bid_amount', 0):,.0f}" if comp['stats'].get('bid_amount') else 'N/A',
+                                    'Bid Count': comp['stats'].get('bid_count', comp['stats']['total_bids']),
                                     'Win Rate': f"{comp['stats']['win_rate']}%",
-                                    'Bids': comp['stats']['total_bids'],
                                     'Type': comp['bidder_type'],
                                     'Level': comp['threat_level']
                                 })

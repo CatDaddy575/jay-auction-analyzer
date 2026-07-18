@@ -71,19 +71,24 @@ class BidHistoryScraper:
                 return []
 
     def _parse_bid_history(self, html, auction_url):
-        """Parse bid history from page HTML - rank by highest bid amount on THIS auction"""
+        """Parse bid history - track highest bid and bid count per bidder"""
         soup = BeautifulSoup(html, 'html.parser')
-        bidders_dict = {}  # Track highest bid per bidder
+        bidders_data = {}  # {bidder_name: {'highest_bid': X, 'bid_count': Y, 'bids': [...]}}
 
         # First, find the seller so we can exclude them
         seller_name = self._find_seller(soup)
 
-        # PRIORITY 1: Extract current high bid amount from bid-information section
+        # PRIORITY 1: Extract current high bid from bid-information section
         current_high_bidder, current_high_amount = self._find_current_high_bid(soup)
         if current_high_bidder and current_high_bidder.lower() != seller_name.lower() if seller_name else True:
-            bidders_dict[current_high_bidder] = current_high_amount
+            if current_high_bidder not in bidders_data:
+                bidders_data[current_high_bidder] = {'highest_bid': 0, 'bid_count': 0, 'bids': []}
+            if current_high_amount > bidders_data[current_high_bidder]['highest_bid']:
+                bidders_data[current_high_bidder]['highest_bid'] = current_high_amount
+            bidders_data[current_high_bidder]['bids'].append(current_high_amount)
+            bidders_data[current_high_bidder]['bid_count'] += 1
 
-        # Extract bidders from comments section (where bid activity happens)
+        # Extract all bids from comments section
         comments = soup.find_all('div', class_='comment')
 
         if comments:
@@ -112,19 +117,31 @@ class BidHistoryScraper:
                     if normalized_name.lower() in ['bringatrailer', 'seller', 'reserve', 'admin']:
                         continue
 
-                    # Extract bid amount from comment text if available
+                    # Extract bid amount from comment
                     bid_amount = self._extract_bid_amount(comment)
 
-                    # Track highest bid for this bidder
-                    if normalized_name not in bidders_dict or bid_amount > (bidders_dict[normalized_name] or 0):
-                        bidders_dict[normalized_name] = bid_amount
+                    # Initialize bidder if not seen
+                    if normalized_name not in bidders_data:
+                        bidders_data[normalized_name] = {'highest_bid': 0, 'bid_count': 0, 'bids': []}
 
-        # Convert to list and sort by bid amount (highest first)
+                    # Track this bid
+                    if bid_amount > 0:
+                        bidders_data[normalized_name]['bids'].append(bid_amount)
+                        bidders_data[normalized_name]['bid_count'] += 1
+                        if bid_amount > bidders_data[normalized_name]['highest_bid']:
+                            bidders_data[normalized_name]['highest_bid'] = bid_amount
+
+        # Convert to list, sort by highest bid amount (highest first)
         bidders_list = []
-        for name, amount in sorted(bidders_dict.items(), key=lambda x: x[1] if x[1] else 0, reverse=True):
+        for name in sorted(bidders_data.keys(),
+                          key=lambda x: bidders_data[x]['highest_bid'],
+                          reverse=True):
+            data = bidders_data[name]
             bidders_list.append({
                 'bidder_name': name,
-                'bid_amount': amount,
+                'bid_amount': data['highest_bid'],
+                'bid_count': data['bid_count'],
+                'all_bids': data['bids'],
                 'timestamp': None,
                 'result': 'active'
             })
@@ -197,14 +214,15 @@ class BidHistoryScraper:
         return self._extract_bid_amount_from_text(element.get_text())
 
     def _extract_bid_amount_from_text(self, text):
-        """Parse bid amount from text like '$50,000' or 'bid $50,000'"""
+        """Parse bid amount from text like 'USD $50,000 bid placed by' """
         try:
-            # Look for $ followed by numbers
             import re
+            # Look for USD $X,XXX or just $X,XXX
             match = re.search(r'\$[\d,]+(?:\.\d{2})?', text)
             if match:
-                bid_str = match.group(0).replace('$', '').replace(',', '')
-                return float(bid_str)
+                bid_str = match.group(0).replace('$', '').replace(',', '').strip()
+                if bid_str:
+                    return float(bid_str)
         except:
             pass
         return 0
