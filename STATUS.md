@@ -16,14 +16,26 @@
   - Config management
 
 ## NOW
-- Testing browser login with your credentials
+- Testing browser login with live auctions
 - Refining auction scraping logic
-- Building real-time monitoring loop
 
 ## NEXT
 - Test live auction data extraction
 - Build bidder intelligence/pattern analysis
-- Build market value analysis
-- Build strategy recommendations
-- Implement monitoring scheduler
-- Extensive testing before automated bidding
+- Build market value analysis & competitor tracking
+- Test strategy recommendations
+- Extensive live testing before automated bidding
+
+## ARCHITECTURE
+
+**Adaptive Monitoring Scheduler:**
+- 7+ days: Check 1x per day (minimal resources)
+- 2-7 days: Check 2x per day
+- 24-48 hours: Check every 2 hours
+- 2-24 hours: Check every 15 minutes
+- <2 hours: Check every 2-3 minutes
+- <5 minutes: Real-time monitoring
+
+**Usage:**
+- `python main.py` — Test mode (verify setup)
+- `python main.py --monitor` — Monitor mode (run scheduler on active auctions)

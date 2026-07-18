@@ -3,6 +3,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 import time
 
 from src.config.credentials import get_credentials, BA_BASE_URL, USER_AGENT
@@ -17,13 +19,26 @@ class BrowserManager:
         print('🌐 Launching browser...')
 
         chrome_options = Options()
-        # chrome_options.add_argument('--headless')  # Uncomment for headless mode
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         chrome_options.add_argument(f'user-agent={USER_AGENT}')
 
-        self.driver = webdriver.Chrome(options=chrome_options)
-        self.wait = WebDriverWait(self.driver, 10)
+        # Disable various security features that might block automation
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+
+        try:
+            # Use webdriver-manager to automatically download and manage ChromeDriver
+            service = Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            self.wait = WebDriverWait(self.driver, 10)
+            print('✓ Browser launched successfully')
+        except Exception as e:
+            print(f'❌ Failed to launch browser: {e}')
+            print('Make sure Google Chrome is installed on your system.')
+            raise
 
     def login(self):
         """Log into BringATrailer"""
