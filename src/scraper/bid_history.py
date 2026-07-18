@@ -71,9 +71,9 @@ class BidHistoryScraper:
                 return []
 
     def _parse_bid_history(self, html, auction_url):
-        """Parse bid history - track highest bid and bid count per bidder"""
+        """Parse bid history - track highest bid, bid count, and timestamps per bidder"""
         soup = BeautifulSoup(html, 'html.parser')
-        bidders_data = {}  # {bidder_name: {'highest_bid': X, 'bid_count': Y, 'bids': [...]}}
+        bidders_data = {}  # {bidder_name: {'highest_bid': X, 'bid_count': Y, 'latest_bid': X, 'latest_time': T, 'bids': [...]}}
 
         # First, find the seller so we can exclude them
         seller_name = self._find_seller(soup)
@@ -82,10 +82,11 @@ class BidHistoryScraper:
         current_high_bidder, current_high_amount = self._find_current_high_bid(soup)
         if current_high_bidder and current_high_bidder.lower() != seller_name.lower() if seller_name else True:
             if current_high_bidder not in bidders_data:
-                bidders_data[current_high_bidder] = {'highest_bid': 0, 'bid_count': 0, 'bids': []}
+                bidders_data[current_high_bidder] = {'highest_bid': 0, 'latest_bid': 0, 'latest_time': None, 'bid_count': 0, 'bids': []}
             if current_high_amount > bidders_data[current_high_bidder]['highest_bid']:
                 bidders_data[current_high_bidder]['highest_bid'] = current_high_amount
-            bidders_data[current_high_bidder]['bids'].append(current_high_amount)
+            bidders_data[current_high_bidder]['latest_bid'] = current_high_amount
+            bidders_data[current_high_bidder]['bids'].append({'amount': current_high_amount, 'time': None})
             bidders_data[current_high_bidder]['bid_count'] += 1
 
         # Extract all bids from comments section
@@ -117,19 +118,23 @@ class BidHistoryScraper:
                     if normalized_name.lower() in ['bringatrailer', 'seller', 'reserve', 'admin']:
                         continue
 
-                    # Extract bid amount from comment
+                    # Extract bid amount and timestamp from comment
                     bid_amount = self._extract_bid_amount(comment)
+                    bid_time = self._extract_bid_timestamp(comment)
 
                     # Initialize bidder if not seen
                     if normalized_name not in bidders_data:
-                        bidders_data[normalized_name] = {'highest_bid': 0, 'bid_count': 0, 'bids': []}
+                        bidders_data[normalized_name] = {'highest_bid': 0, 'latest_bid': 0, 'latest_time': None, 'bid_count': 0, 'bids': []}
 
                     # Track this bid
                     if bid_amount > 0:
-                        bidders_data[normalized_name]['bids'].append(bid_amount)
+                        bidders_data[normalized_name]['bids'].append({'amount': bid_amount, 'time': bid_time})
                         bidders_data[normalized_name]['bid_count'] += 1
                         if bid_amount > bidders_data[normalized_name]['highest_bid']:
                             bidders_data[normalized_name]['highest_bid'] = bid_amount
+                        # Update latest bid (most recent based on comment order - later comments are more recent)
+                        bidders_data[normalized_name]['latest_bid'] = bid_amount
+                        bidders_data[normalized_name]['latest_time'] = bid_time
 
         # Convert to list, sort by highest bid amount (highest first)
         bidders_list = []
@@ -139,10 +144,11 @@ class BidHistoryScraper:
             data = bidders_data[name]
             bidders_list.append({
                 'bidder_name': name,
-                'bid_amount': data['highest_bid'],
-                'bid_count': data['bid_count'],
-                'all_bids': data['bids'],
-                'timestamp': None,
+                'bid_amount': data['highest_bid'],           # Highest bid placed
+                'latest_bid': data['latest_bid'],           # Most recent bid
+                'bid_count': data['bid_count'],             # Total bids on this auction
+                'latest_time': data['latest_time'],         # Timestamp of latest bid
+                'all_bids': data['bids'],                   # All bids with timestamps
                 'result': 'active'
             })
 
@@ -226,6 +232,19 @@ class BidHistoryScraper:
         except:
             pass
         return 0
+
+    def _extract_bid_timestamp(self, element):
+        """Extract bid timestamp from comment (e.g., 'Jul 18 at 6:30 PM')"""
+        try:
+            import re
+            text = element.get_text()
+            # Look for timestamp patterns like "Jul 18 at 6:30 PM"
+            match = re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}\s+(AM|PM)', text)
+            if match:
+                return match.group(0)
+        except:
+            pass
+        return None
 
     def _find_seller(self, soup):
         """Find the seller's name from the auction page"""
