@@ -215,11 +215,20 @@ else:
         with tab3:
             st.header("Max Bid Recommendation")
 
+            st.subheader("Auction Fee Category")
+            fee_category = st.radio(
+                "Select your auction's fee category (from BringATrailer help page):",
+                options=["5% fee (cap: $7,500)", "10% fee (cap: $4,000)"],
+                horizontal=True
+            )
+            fee_rate = 0.05 if "5%" in fee_category else 0.10
+
+            st.markdown("---")
             st.subheader("Buyer's Fee Calculation")
 
             # Current bid from scrape
             try:
-                fee_calc = FeeCalculator.calculate_total_cost(current_bid)
+                fee_calc = FeeCalculator.calculate_total_cost(current_bid, fee_rate)
 
                 col1, col2, col3 = st.columns(3)
 
@@ -231,6 +240,9 @@ else:
 
                 with col3:
                     st.write(f"**Total Cost:** ${fee_calc['total_cost']:,}")
+
+                if fee_calc['fee_capped']:
+                    st.info(f"⚠️ Fee is capped at the maximum for this category")
 
                 st.markdown("---")
 
@@ -244,7 +256,7 @@ else:
                 )
 
                 # Calculate max bid for budget
-                max_bid_calc = FeeCalculator.calculate_max_bid(target_budget)
+                max_bid_calc = FeeCalculator.calculate_max_bid(target_budget, fee_rate)
 
                 col1, col2, col3 = st.columns(3)
 
