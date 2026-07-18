@@ -25,18 +25,20 @@ class BidHistoryScraper:
     def scrape_bid_history(self, auction_url):
         """
         Extract bid history from auction.
+        Try Playwright first (for full list), fallback to static HTML.
         Returns list of dicts: {bidder_name, bid_amount, timestamp, result}
         """
+        # Try Playwright first (better extraction)
         try:
             browser = self._get_browser()
             page = browser.new_page()
             page.goto(auction_url, wait_until='domcontentloaded', timeout=30000)
 
-            # Give JavaScript time to render, but don't wait for networkidle (tracking)
+            # Give JavaScript time to render
             try:
                 page.wait_for_load_state('load', timeout=5000)
             except:
-                pass  # Continue anyway if load state times out
+                pass
 
             html = page.content()
             page.close()
@@ -44,8 +46,16 @@ class BidHistoryScraper:
             return self._parse_bid_history(html, auction_url)
 
         except Exception as e:
-            print(f"Error scraping bid history: {e}")
-            return []
+            print(f"Playwright failed ({e}), falling back to static HTML...")
+            # Fallback to static HTML scraping
+            try:
+                import requests
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                response = requests.get(auction_url, headers=headers, timeout=10)
+                return self._parse_bid_history(response.text, auction_url)
+            except Exception as fallback_error:
+                print(f"Static HTML fallback also failed: {fallback_error}")
+                return []
 
     def _parse_bid_history(self, html, auction_url):
         """Parse bid history from page HTML"""
